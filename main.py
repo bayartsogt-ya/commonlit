@@ -24,10 +24,10 @@ NUM_EPOCHS = 3
 BATCH_SIZE = 16
 LEARNING_RATE = 2e-5
 MAX_LEN = 248
-NUM_DATA_WORKERS = 4
+NUM_DATA_WORKERS = 2
 EVAL_SCHEDULE = [(0.50, 16), (0.49, 8), (0.48, 4), (0.47, 2), (-1., 1)]
 # ROBERTA_PATH = "../input/clrp-roberta-base/clrp_roberta_base"
-ROBERTA_PATH = "roberta-large"
+ROBERTA_PATH = "roberta-base"
 
 DATA_DIR = "data"
 
@@ -105,6 +105,9 @@ if __name__ == "__main__":
 
     # ----------------------------- TOKENIZER --------------------------------
     tokenizer = AutoTokenizer.from_pretrained(ROBERTA_PATH)
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    print(f"TOKENIZERS_PARALLELISM = {os.environ['TOKENIZERS_PARALLELISM']}")
+
     gc.collect()
 
     # ----------------------------- 5-FOLD TRAINING --------------------------------
