@@ -6,7 +6,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, AutoConfig
 from transformers import get_cosine_schedule_with_warmup
 from sklearn.model_selection import KFold
 
@@ -28,6 +28,9 @@ NUM_DATA_WORKERS = 2
 EVAL_SCHEDULE = [(0.50, 16), (0.49, 8), (0.48, 4), (0.47, 2), (-1., 1)]
 # ROBERTA_PATH = "../input/clrp-roberta-base/clrp_roberta_base"
 ROBERTA_PATH = "roberta-base"
+OUTPUT_DIR = "."
+KAGGLE_DATASET_ID = "cl-roberta-base-v1"
+KAGGLE_DATASET_TITLE = "cl-roberta-base-v1"
 
 DATA_DIR = "data"
 
@@ -92,6 +95,7 @@ def train(model, model_path, train_loader, val_loader,
     return best_val_rmse
 
 if __name__ == "__main__":
+    
     # ----------------------------- DATA --------------------------------
     print("loading data")
     train_df = pd.read_csv(f"{DATA_DIR}/train.csv")
@@ -108,6 +112,8 @@ if __name__ == "__main__":
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
     print(f"TOKENIZERS_PARALLELISM = {os.environ['TOKENIZERS_PARALLELISM']}")
 
+    AutoConfig.from_pretrained("roberta-base").save_pretrained(OUTPUT_DIR)
+    tokenizer.save_pretrained(OUTPUT_DIR)
     gc.collect()
 
     # ----------------------------- 5-FOLD TRAINING --------------------------------
@@ -119,7 +125,7 @@ if __name__ == "__main__":
 
     for fold, (train_indices, val_indices) in enumerate(kfold.split(train_df)):    
         print(f"\nFold {fold + 1}/{NUM_FOLDS}")
-        model_path = f"model_{fold + 1}.pth"
+        model_path = f"{OUTPUT_DIR}/model_{fold + 1}.pth"
             
         set_random_seed(SEED + fold)
         
@@ -146,7 +152,36 @@ if __name__ == "__main__":
 
         del model
         gc.collect()
-        
+
         print("\nPerformance estimates:")
         print(list_val_rmse)
         print("Mean:", np.array(list_val_rmse).mean())
+        
+    with open(f"{OUTPUT_DIR}/log.txt") as writer:
+        print("\nPerformance estimates:")
+        print(list_val_rmse)
+        print("Mean:", np.array(list_val_rmse).mean())
+        writer.write("\nPerformance estimates:")
+        writer.write("\n")
+        writer.write(list_val_rmse)
+        writer.write("\n")
+        writer.write("Mean:", np.array(list_val_rmse).mean())
+
+
+    # ----------------------------- KAGGLE DATASETS -----------------------
+    print("Uploading to Kaggle...")
+    import json
+    import subprocess
+    kaggle_config = {
+        "licenses": [
+            {
+            "name": "CC0-1.0"
+            }
+        ], 
+        "id": f"bayartsogtya/{KAGGLE_DATASET_ID}", 
+        "title": KAGGLE_DATASET_TITLE
+    }
+    with open(f"{OUTPUT_DIR}/dataset-metadata.json", "w") as writer:
+        json.dump(kaggle_config, writer, indent=4)
+
+    subprocess.run(["kaggle", "datasets", "create", "-p", OUTPUT_DIR])
