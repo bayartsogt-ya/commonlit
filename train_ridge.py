@@ -58,7 +58,7 @@ if __name__ == "__main__":
         print(pred.shape)
         df.loc[val_indices, "num_pred"] = pred
 
-
+    df["dif"] = (df.target - df.num_pred).abs()
     print(
         "Mean:", np.sqrt(((df.target.values - df.num_pred.values) ** 2).mean())
         )

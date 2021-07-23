@@ -98,12 +98,15 @@ if __name__ == "__main__":
     
     # ----------------------------- DATA --------------------------------
     print("loading data")
-    train_df = pd.read_csv(f"{DATA_DIR}/train.csv")
+    train_df = pd.read_csv(f"{DATA_DIR}/train_ridge.csv")
     # Remove incomplete entries if any.
     train_df.drop(train_df[(train_df.target == 0) & (train_df.standard_error == 0)].index,
                 inplace=True)
     train_df.reset_index(drop=True, inplace=True)
-    test_df = pd.read_csv(f"{DATA_DIR}/test.csv")
+
+    train_df["target"] = train_df["target"] - train_df["num_pred"]
+
+    # test_df = pd.read_csv(f"{DATA_DIR}/test.csv")
     submission_df = pd.read_csv(f"{DATA_DIR}/sample_submission.csv")
     print("data loaded!")
 
