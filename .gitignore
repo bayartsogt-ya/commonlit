@@ -1,0 +1,7 @@
+*.json
+*.pth
+*.pyc
+*.xlsx
+*.DS_Store
+*.txt
+data/*
