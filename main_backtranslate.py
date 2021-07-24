@@ -135,7 +135,7 @@ if __name__ == "__main__":
         print(list_val_rmse)
         print("Mean:", np.array(list_val_rmse).mean())
 
-    with open(f"{OUTPUT_DIR}/log.txt") as writer:
+    with open(f"{OUTPUT_DIR}/log_{FOLD if FOLD is not None else -1}.txt", "w") as writer:
         print("\nPerformance estimates:")
         print(list_val_rmse)
         print("Mean:", np.array(list_val_rmse).mean())
