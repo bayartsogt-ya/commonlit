@@ -62,8 +62,10 @@ if __name__ == "__main__":
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
     print(f"TOKENIZERS_PARALLELISM = {os.environ['TOKENIZERS_PARALLELISM']}")
 
-    AutoConfig.from_pretrained("roberta-base").save_pretrained(OUTPUT_DIR)
-    tokenizer.save_pretrained(OUTPUT_DIR)
+    if FOLD is not None and FOLD == 0:
+        AutoConfig.from_pretrained("roberta-base").save_pretrained(OUTPUT_DIR)
+        tokenizer.save_pretrained(OUTPUT_DIR)
+
     gc.collect()
 
     # ----------------------------- 5-FOLD TRAINING --------------------------------

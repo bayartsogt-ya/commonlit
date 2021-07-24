@@ -5,3 +5,5 @@
 *.DS_Store
 *.txt
 data/*
+.ipynb_checkpoints
+__pycache__
