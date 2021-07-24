@@ -1,4 +1,4 @@
-import os, gc, math, time, json, subprocess
+import os, gc, math, time, json, subprocess, argparse
 import numpy as np
 import pandas as pd
 import subprocess
@@ -35,6 +35,16 @@ GIT_EMAIL = "bayartsogtyadamsuren@icloud.com"
 
 if __name__ == "__main__":
     start_time = time.time()
+
+    parser = argparse.ArgumentParser(description="Simple example of training script.")
+    parser.add_argument("--fold", type=int, default=0, help="If passed, will train only this fold.")
+    parser.add_argument("--output-dir", type=str, default="kaggle-commonlit-exp-no0", help="If passed, All the files will be saved to here and later pushed to HF Hub")
+    parser.add_argument("--num-epochs", type=int, default=3, help="If passed, Number of Epochs to train")
+    args = parser.parse_args()
+
+    FOLD = args.fold
+    OUTPUT_DIR = args.output_dir
+    NUM_EPOCHS = args.num_epochs
 
     # ----------------------------- HF API --------------------------------
     hf_token = HfFolder.get_token(); api = HfApi()
