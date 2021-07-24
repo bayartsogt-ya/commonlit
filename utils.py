@@ -1,9 +1,11 @@
-import os
+import os, time, math
 import random
 import numpy as np
 import torch
 import torch.nn as nn
 from transformers import AdamW
+
+EVAL_SCHEDULE = [(0.50, 16), (0.49, 8), (0.48, 4), (0.47, 2), (-1., 1)]
 
 def set_random_seed(random_seed):
     random.seed(random_seed)
@@ -84,3 +86,63 @@ def create_optimizer(model, learning_rate):
                            "lr": lr})
 
     return AdamW(parameters)
+
+
+
+def train(model, model_path, train_loader, val_loader,
+          optimizer, device, scheduler=None, num_epochs=3):    
+    best_val_rmse = None
+    best_epoch = 0
+    step = 0
+    last_eval_step = 0
+    eval_period = EVAL_SCHEDULE[0][1]    
+
+    start = time.time()
+
+    for epoch in range(num_epochs):                           
+        val_rmse = None         
+
+        for batch_num, (input_ids, attention_mask, target) in enumerate(train_loader):
+            input_ids = input_ids.to(device)
+            attention_mask = attention_mask.to(device)            
+            target = target.to(device)
+            optimizer.zero_grad()
+            model.train()
+            pred = model(input_ids, attention_mask)
+            mse = nn.MSELoss(reduction="mean")(pred.flatten(), target)
+                        
+            mse.backward()
+
+            optimizer.step()
+            if scheduler:
+                scheduler.step()
+            
+            if step >= last_eval_step + eval_period:
+                # Evaluate the model on val_loader.
+                elapsed_seconds = time.time() - start
+                num_steps = step - last_eval_step
+                print(f"\n{num_steps} steps took {elapsed_seconds:0.3} seconds")
+                last_eval_step = step
+                
+                val_rmse = math.sqrt(eval_mse(model, val_loader, device))                            
+
+                print(f"Epoch: {epoch} batch_num: {batch_num}", 
+                      f"val_rmse: {val_rmse:0.4}")
+
+                for rmse, period in EVAL_SCHEDULE:
+                    if val_rmse >= rmse:
+                        eval_period = period
+                        break                               
+                
+                if not best_val_rmse or val_rmse < best_val_rmse:
+                    best_val_rmse = val_rmse
+                    best_epoch = epoch
+                    torch.save(model.state_dict(), model_path)
+                    print(f"New best_val_rmse: {best_val_rmse:0.4}")
+                else:
+                    print(f"Still best_val_rmse: {best_val_rmse:0.4}",
+                          f"(from epoch {best_epoch})")
+                start = time.time()
+            step += 1
+                        
+    return best_val_rmse

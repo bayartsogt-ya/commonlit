@@ -1,8 +1,7 @@
-import os
-import math
-import time
+import os, gc, math, time, json, subprocess
 import numpy as np
 import pandas as pd
+import subprocess
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -10,94 +9,38 @@ from transformers import AutoTokenizer, AutoConfig
 from transformers import get_cosine_schedule_with_warmup
 from sklearn.model_selection import KFold
 
-import gc
+from huggingface_hub.hf_api import HfFolder, HfApi
+from huggingface_hub.repository import Repository
 
 # local imports 
-from utils import set_random_seed, eval_mse, predict, create_optimizer
+from utils import set_random_seed, eval_mse, predict, create_optimizer, train
 from dataset import LitDataset
 from model import LitModel
 
 gc.enable()
 
+OUTPUT_DIR = "kaggle-commonlit-exp-no0"
+FOLD = 0
 NUM_FOLDS = 5
 NUM_EPOCHS = 3
 BATCH_SIZE = 16
 LEARNING_RATE = 2e-5
 MAX_LEN = 248
 NUM_DATA_WORKERS = 2
-EVAL_SCHEDULE = [(0.50, 16), (0.49, 8), (0.48, 4), (0.47, 2), (-1., 1)]
-# ROBERTA_PATH = "../input/clrp-roberta-base/clrp_roberta_base"
 ROBERTA_PATH = "roberta-base"
-OUTPUT_DIR = "output"
-KAGGLE_DATASET_ID = "cl-roberta-base-v1"
-KAGGLE_DATASET_TITLE = "cl-roberta-base-v1"
-
 DATA_DIR = "data"
-
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-
-def train(model, model_path, train_loader, val_loader,
-          optimizer, scheduler=None, num_epochs=NUM_EPOCHS):    
-    best_val_rmse = None
-    best_epoch = 0
-    step = 0
-    last_eval_step = 0
-    eval_period = EVAL_SCHEDULE[0][1]    
-
-    start = time.time()
-
-    for epoch in range(num_epochs):                           
-        val_rmse = None         
-
-        for batch_num, (input_ids, attention_mask, target) in enumerate(train_loader):
-            input_ids = input_ids.to(DEVICE)
-            attention_mask = attention_mask.to(DEVICE)            
-            target = target.to(DEVICE)
-            optimizer.zero_grad()
-            model.train()
-            pred = model(input_ids, attention_mask)
-            mse = nn.MSELoss(reduction="mean")(pred.flatten(), target)
-                        
-            mse.backward()
-
-            optimizer.step()
-            if scheduler:
-                scheduler.step()
-            
-            if step >= last_eval_step + eval_period:
-                # Evaluate the model on val_loader.
-                elapsed_seconds = time.time() - start
-                num_steps = step - last_eval_step
-                print(f"\n{num_steps} steps took {elapsed_seconds:0.3} seconds")
-                last_eval_step = step
-                
-                val_rmse = math.sqrt(eval_mse(model, val_loader, DEVICE))                            
-
-                print(f"Epoch: {epoch} batch_num: {batch_num}", 
-                      f"val_rmse: {val_rmse:0.4}")
-
-                for rmse, period in EVAL_SCHEDULE:
-                    if val_rmse >= rmse:
-                        eval_period = period
-                        break                               
-                
-                if not best_val_rmse or val_rmse < best_val_rmse:
-                    best_val_rmse = val_rmse
-                    best_epoch = epoch
-                    torch.save(model.state_dict(), model_path)
-                    print(f"New best_val_rmse: {best_val_rmse:0.4}")
-                else:
-                    print(f"Still best_val_rmse: {best_val_rmse:0.4}",
-                          f"(from epoch {best_epoch})")
-                start = time.time()
-            step += 1
-                        
-    return best_val_rmse
+GIT_USER = "bayartsogt"
+GIT_EMAIL = "bayartsogtyadamsuren@icloud.com"
 
 if __name__ == "__main__":
+    start_time = time.time()
 
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    
+    # ----------------------------- HF API --------------------------------
+    hf_token = HfFolder.get_token(); api = HfApi()
+    repo_link = api.create_repo(token=hf_token, name=OUTPUT_DIR, exist_ok=True, private=True)
+    repo = Repository(local_dir=OUTPUT_DIR, clone_from=repo_link, use_auth_token=hf_token, git_user=GIT_USER, git_email=GIT_EMAIL)
+
     # ----------------------------- DATA --------------------------------
     print("loading data")
     # train_df = pd.read_csv(f"{DATA_DIR}/train.csv")
@@ -130,7 +73,10 @@ if __name__ == "__main__":
 
     kfold = KFold(n_splits=NUM_FOLDS, random_state=SEED, shuffle=True)
 
-    for fold, (train_indices, val_indices) in enumerate(kfold.split(train_df)):    
+    for fold, (train_indices, val_indices) in enumerate(kfold.split(train_df)):
+        if FOLD is not None and FOLD != fold:
+            continue
+
         print(f"\nFold {fold + 1}/{NUM_FOLDS}")
         model_path = f"{OUTPUT_DIR}/model_{fold + 1}.pth"
 
@@ -168,7 +114,7 @@ if __name__ == "__main__":
             num_warmup_steps=50)    
 
         list_val_rmse.append(train(model, model_path, train_loader,
-                                val_loader, optimizer, scheduler=scheduler))
+                                val_loader, optimizer, DEVICE, scheduler=scheduler, num_epochs=NUM_EPOCHS))
 
         del model
         gc.collect()
@@ -187,22 +133,7 @@ if __name__ == "__main__":
         writer.write("\n")
         writer.write("Mean:", np.array(list_val_rmse).mean())
 
-
-    # ----------------------------- KAGGLE DATASETS -----------------------
-    print("Uploading to Kaggle...")
-    import json, subprocess
-
-    kaggle_config = {
-        "licenses": [
-            {
-            "name": "CC0-1.0"
-            }
-        ], 
-        "id": f"bayartsogtya/{KAGGLE_DATASET_ID}", 
-        "title": KAGGLE_DATASET_TITLE
-    }
-
-    with open(f"{OUTPUT_DIR}/dataset-metadata.json", "w") as writer:
-        json.dump(kaggle_config, writer, indent=4)
-
-    subprocess.run(["kaggle", "datasets", "create", "-p", OUTPUT_DIR])
+    # ----------------------------- UPLOAD TO HUB -----------------------
+    commit_link = repo.push_to_hub()
+    print("UPLOADED TO HUGGINGFACE HUB", commit_link)
+    print("TIME SPENT: %.3f".format(time.time()-start_time))
