@@ -1,11 +1,13 @@
 import os, time, math
 import random
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 from transformers import AdamW
+from sklearn.model_selection import StratifiedKFold
 
-EVAL_SCHEDULE = [(0.50, 16), (0.49, 8), (0.48, 4), (0.47, 2), (-1., 1)]
+EVAL_SCHEDULE = [(0.50, 16), (0.49, 8), (0.48, 4), (-1., 4)]
 
 def set_random_seed(random_seed):
     random.seed(random_seed)
@@ -146,3 +148,14 @@ def train(model, model_path, train_loader, val_loader,
             step += 1
                         
     return best_val_rmse
+
+def create_folds(data: pd.DataFrame, num_splits: int, seed: int):
+    data["kfold"] = -1
+    data = data.sample(frac=1, random_state=seed).reset_index(drop=True)
+    num_bins = int(np.floor(1 + np.log2(len(data))))
+    data.loc[:, "bins"] = pd.cut(data["target"], bins=num_bins, labels=False)
+    kf = StratifiedKFold(n_splits=num_splits)
+    for f, (t_, v_) in enumerate(kf.split(X=data, y=data.bins.values)):
+        data.loc[v_, 'kfold'] = f
+    data = data.drop("bins", axis=1)
+    return data
