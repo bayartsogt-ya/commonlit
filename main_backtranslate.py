@@ -98,7 +98,7 @@ if __name__ == "__main__":
     print(f"TOKENIZERS_PARALLELISM = {os.environ['TOKENIZERS_PARALLELISM']}")
 
     if FOLD is not None and FOLD == 0:
-        AutoConfig.from_pretrained("roberta-base").save_pretrained(OUTPUT_DIR)
+        AutoConfig.from_pretrained(MODEL_PATH).save_pretrained(OUTPUT_DIR)
         tokenizer.save_pretrained(OUTPUT_DIR)
 
     gc.collect()
