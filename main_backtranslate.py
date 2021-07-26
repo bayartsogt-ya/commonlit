@@ -53,6 +53,7 @@ if __name__ == "__main__":
     parser.add_argument("--learning-rate", type=float, default=2e-5, help="If passed, seed will be used for reproducability")
     parser.add_argument("--seed", type=int, default=1000, help="If passed, seed will be used for reproducability")
     parser.add_argument("--back-translate", type=bool, default=False, help="If passed, Back translated data will be added")
+    parser.add_argument("--use-warmup-scheduler", type=bool, default=True, help="If passed, Back translated data will be added")
     args = parser.parse_args()
 
     print("----------- ARGS -----------")
@@ -142,11 +143,14 @@ if __name__ == "__main__":
 
     model = LitModel(MODEL_PATH).to(DEVICE)
 
-    optimizer = create_optimizer(model, LEARNING_RATE)                        
-    scheduler = get_cosine_schedule_with_warmup(
-        optimizer,
-        num_training_steps=NUM_EPOCHS * len(train_loader),
-        num_warmup_steps=50)    
+    optimizer = create_optimizer(model, LEARNING_RATE)
+
+    scheduler = None
+    if args.use_warmup_scheduler:
+        scheduler = get_cosine_schedule_with_warmup(
+            optimizer,
+            num_training_steps=NUM_EPOCHS * len(train_loader),
+            num_warmup_steps=50)
 
     list_val_rmse.append(train(model, model_output_path, train_loader,
                             val_loader, optimizer, DEVICE, scheduler=scheduler, num_epochs=NUM_EPOCHS))
