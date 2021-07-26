@@ -41,7 +41,8 @@ if __name__ == "__main__":
         --batch-size 16 \
         --learning-rate 2e-5 \
         --seed 1000 \
-        --back-translate False
+        --back-translate \
+        --use-warmup-scheduler
     """
     start_time = time.time()
 
@@ -52,8 +53,8 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=16, help="If passed, seed will be used for reproducability")
     parser.add_argument("--learning-rate", type=float, default=2e-5, help="If passed, seed will be used for reproducability")
     parser.add_argument("--seed", type=int, default=1000, help="If passed, seed will be used for reproducability")
-    parser.add_argument("--back-translate", type=bool, default=False, help="If passed, Back translated data will be added")
-    parser.add_argument("--use-warmup-scheduler", type=bool, default=True, help="If passed, Back translated data will be added")
+    parser.add_argument("--back-translate", action="store_true", default=False, help="If passed, Back translated data will be added")
+    parser.add_argument("--use-warmup-scheduler", action="store_false", default=True, help="If passed, Back translated data will be added")
     args = parser.parse_args()
 
     print("----------- ARGS -----------")
