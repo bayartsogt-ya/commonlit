@@ -61,11 +61,13 @@ if __name__ == "__main__":
 
     FOLD = args.fold
     NUM_EPOCHS = args.num_epochs
-    MODEL_PATH = args.model_path.replace("/","-") # for google/bigbird-roberta-base => google-bigbird-roberta-base
+    MODEL_PATH = args.model_path
     SEED = args.seed
     BATCH_SIZE = args.batch_size
     LEARNING_RATE = args.learning_rate
-    OUTPUT_DIR = f"kaggle-{MODEL_PATH}-{'backtranlated' if args.back_translate else 'original'}-seed-{SEED}"
+
+    # for google/bigbird-roberta-base => google-bigbird-roberta-base
+    OUTPUT_DIR = f"kaggle-{MODEL_PATH.replace('/','-')}-{'backtranlated' if args.back_translate else 'original'}-seed-{SEED}"
 
     # ----------------------------- HF API --------------------------------
     hf_token = HfFolder.get_token(); api = HfApi()
