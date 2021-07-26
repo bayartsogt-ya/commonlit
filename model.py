@@ -3,7 +3,7 @@ import torch.nn as nn
 from transformers import AutoModel
 from transformers import AutoConfig
 
-class LitModel(nn.Module):
+class AttentionHeadModel(nn.Module):
     def __init__(self, roberta_path):
         super().__init__()
 
@@ -50,3 +50,29 @@ class LitModel(nn.Module):
         
         # Now we reduce the context vector to the prediction score.
         return self.regressor(context_vector)
+
+class MeanPoolingModel(nn.Module):
+    """
+    Idea is copied from here https://www.kaggle.com/jcesquiveld/roberta-large-5-fold-single-model-meanpooling/notebook
+    """
+    def __init__(self, model_name):
+        super().__init__()
+        
+        config = AutoConfig.from_pretrained(model_name)
+        self.model = AutoModel.from_pretrained(model_name, config=config)
+        self.layer_norm = nn.LayerNorm(config.hidden_size)
+        self.linear = nn.Linear(config.hidden_size, 1)
+        
+    def forward(self, input_ids, attention_mask):
+        
+        outputs = self.model(input_ids, attention_mask)
+        last_hidden_state = outputs[0]
+        input_mask_expanded = attention_mask.unsqueeze(-1).expand(last_hidden_state.size()).float()
+        sum_embeddings = torch.sum(last_hidden_state * input_mask_expanded, 1)
+        sum_mask = input_mask_expanded.sum(1)
+        sum_mask = torch.clamp(sum_mask, min=1e-9)
+        mean_embeddings = sum_embeddings / sum_mask
+        norm_mean_embeddings = self.layer_norm(mean_embeddings)
+        logits = self.linear(norm_mean_embeddings)
+        
+        return logits

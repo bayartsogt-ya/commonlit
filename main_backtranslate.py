@@ -1,10 +1,10 @@
-import os, gc, time, argparse
+import os, gc, time, argparse, json
 import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, AutoConfig
-from transformers import get_cosine_schedule_with_warmup
+from transformers import get_cosine_schedule_with_warmup, get_linear_schedule_with_warmup
 from sklearn.model_selection import KFold
 
 from huggingface_hub.hf_api import HfFolder, HfApi
@@ -13,7 +13,7 @@ from huggingface_hub.repository import Repository
 # local imports 
 from utils import set_random_seed, eval_mse, predict, create_optimizer, train, create_folds, create_optimizer_roberta_large
 from dataset import LitDataset
-from model import LitModel
+from model import AttentionHeadModel, MeanPoolingModel
 
 gc.enable()
 
@@ -48,14 +48,20 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Simple example of training script.")
     parser.add_argument("--fold", type=int, default=0, help="If passed, will train only this fold.")
-    parser.add_argument("--model-path", type=str, default="roberta-base", help="Hugginface model name")
+
+    # model selection
+    parser.add_argument("--model-path", type=str, default="roberta-base", help="Hugginface base model name")
+    parser.add_argument("--lr-scheduler", type=str, default="cosine", help="If passed, Warm Up scheduler will be used")
+    parser.add_argument("--model-type", type=str, default="attention_head", help="One of [attention_head, mean_pooling]")
+
+    # hyperparameter
     parser.add_argument("--num-epochs", type=int, default=3, help="If passed, Number of Epochs to train")
     parser.add_argument("--batch-size", type=int, default=16, help="If passed, seed will be used for reproducability")
     parser.add_argument("--learning-rate", type=float, default=2e-5, help="If passed, seed will be used for reproducability")
     parser.add_argument("--seed", type=int, default=1000, help="If passed, seed will be used for reproducability")
     parser.add_argument("--back-translate", action="store_true", default=False, help="If passed, Back translated data will be added")
-    parser.add_argument("--disable-warmup-scheduler", action="store_true", default=False, help="If passed, Warm Up scheduler will be used")
-    parser.add_argument("--roberta-large-scheduler", action="store_true", default=False, help="If passed, ")
+    parser.add_argument("--warmup-steps", type=int, default=40, help="If passed, Warm Up scheduler will be used")
+    parser.add_argument("--roberta-large-optimizer", action="store_true", default=False, help="If passed, ")
     args = parser.parse_args()
 
     print("----------- ARGS -----------")
@@ -70,13 +76,21 @@ if __name__ == "__main__":
     LEARNING_RATE = args.learning_rate
 
     # for google/bigbird-roberta-base => google-bigbird-roberta-base
-    OUTPUT_DIR = f"kaggle-{MODEL_PATH.replace('/','-')}-{'backtranlated' if args.back_translate else 'original'}-seed-{SEED}"
+    OUTPUT_DIR = f"kaggle-{MODEL_PATH.replace('/','-')}-" + \
+                    f"{'ah' if args.model_type == 'attention_head' else 'mp'}" + \
+                    f"{'bt' if args.back_translate else 'orig'}-"+ \
+                    f"s{SEED}"
+
 
     # ----------------------------- HF API --------------------------------
     hf_token = HfFolder.get_token(); api = HfApi()
     repo_link = api.create_repo(token=hf_token, name=OUTPUT_DIR, exist_ok=True, private=True)
     repo = Repository(local_dir=OUTPUT_DIR, clone_from=repo_link, use_auth_token=hf_token, git_user=GIT_USER, git_email=GIT_EMAIL)
     print("[success] configured HF Hub to", OUTPUT_DIR)
+
+    with open(f"{OUTPUT_DIR}/training_arguments.json", "w") as writer:
+        json.dump(vars(args), writer, indent=4)
+        print(f"[success] wrote training args to {OUTPUT_DIR}")
 
     # ----------------------------- DATA --------------------------------
     print("loading data")
@@ -110,7 +124,7 @@ if __name__ == "__main__":
 
     # ----------------------------- 5-FOLD TRAINING --------------------------------
     print("Starting training...")
-    list_val_rmse = []
+    
     # for fold, (train_indices, val_indices) in enumerate(kfold.split(train_df)):
     # if FOLD is not None and FOLD != fold:
     #     continue
@@ -143,43 +157,55 @@ if __name__ == "__main__":
 
     set_random_seed(SEED)    
 
-    model = LitModel(MODEL_PATH).to(DEVICE)
-
-    if args.roberta_large_scheduler:
+    # ---------------- MODEL SELECTION ----------------
+    if args.model_type == "attention_head":
+        model = AttentionHeadModel(MODEL_PATH).to(DEVICE)
+    elif args.model_type == "mean_pooling":
+        model = MeanPoolingModel(MODEL_PATH).to(DEVICE)
+    else:
+        raise Exception("`model-type` should be one of [attention_head, mean_pooling]")
+    
+    # ---------------- OPTIMIZER SELECTION ----------------
+    if args.roberta_large_optimizer:
         print("Using Roberta Large Optimizer copied from https://www.kaggle.com/jcesquiveld/roberta-large-5-fold-single-model-meanpooling/notebook")
         optimizer = create_optimizer_roberta_large(model, LEARNING_RATE)
     else:
         optimizer = create_optimizer(model, LEARNING_RATE)
 
-
-    scheduler = get_cosine_schedule_with_warmup(
-        optimizer,
-        num_training_steps=NUM_EPOCHS * len(train_loader),
-        num_warmup_steps=50)
-
-    if not args.disable_warmup_scheduler:
-        print("Disabling warmup scheduler")
+    
+    # ---------------- SCHEDULER SELECTION ----------------
+    print(f"Using {args.lr_scheduler} scheduler")
+    if args.lr_scheduler == "cosine":
+        scheduler = get_cosine_schedule_with_warmup(
+            optimizer,
+            num_training_steps=NUM_EPOCHS * len(train_loader),
+            num_warmup_steps=args.warmup_steps)
+    elif args.lr_scheduler == "linear":
+        scheduler = get_linear_schedule_with_warmup(
+            optimizer,
+            num_training_steps=NUM_EPOCHS * len(train_loader),
+            num_warmup_steps=args.warmup_steps)
+    else:
         scheduler = None
 
-    list_val_rmse.append(train(model, model_output_path, train_loader,
-                            val_loader, optimizer, DEVICE, scheduler=scheduler, num_epochs=NUM_EPOCHS))
+    # ---------------- TRAINING ----------------
+    val_rmse = train(model, model_output_path, train_loader,
+                            val_loader, optimizer, DEVICE, scheduler=scheduler, num_epochs=NUM_EPOCHS)
 
     del model
     gc.collect()
 
     print("\nPerformance estimates:")
-    print(list_val_rmse)
-    print("Mean:", np.array(list_val_rmse).mean())
+    print(f"FOLD {FOLD} | VAL RMSE: {val_rmse}")
 
     with open(f"{OUTPUT_DIR}/log_{FOLD}.txt", "w") as writer:
         writer.write(f"""
         Performance estimates:
-        {list_val_rmse}
-        Mean: {np.array(list_val_rmse).mean()}
+        FOLD {FOLD} | VAL RMSE: {val_rmse}
         """)
 
     # ----------------------------- UPLOAD TO HUB -----------------------
     repo.git_pull() # get updates first
-    commit_link = repo.push_to_hub(commit_message=f"MODEL={FOLD} VALID={np.array(list_val_rmse).mean():.3f}") # then push
+    commit_link = repo.push_to_hub(commit_message=f"MODEL={FOLD} VALID={val_rmse:.3f}") # then push
     print("[success] UPLOADED TO HUGGINGFACE HUB", commit_link)
-    print("[success] TIME SPENT: %.3f".format(time.time()-start_time))
+    print("[success] TIME SPENT: %.3f" % (time.time()-start_time))
