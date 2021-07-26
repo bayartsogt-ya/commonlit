@@ -55,6 +55,10 @@ if __name__ == "__main__":
     parser.add_argument("--back-translate", type=bool, default=False, help="If passed, Back translated data will be added")
     args = parser.parse_args()
 
+    print("----------- ARGS -----------")
+    print(args)
+    print("----------------------------")
+
     FOLD = args.fold
     NUM_EPOCHS = args.num_epochs
     MODEL_PATH = args.model_path
