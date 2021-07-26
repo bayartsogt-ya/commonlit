@@ -61,7 +61,7 @@ if __name__ == "__main__":
 
     FOLD = args.fold
     NUM_EPOCHS = args.num_epochs
-    MODEL_PATH = args.model_path
+    MODEL_PATH = args.model_path.replace("/","-") # for google/bigbird-roberta-base => google-bigbird-roberta-base
     SEED = args.seed
     BATCH_SIZE = args.batch_size
     LEARNING_RATE = args.learning_rate
