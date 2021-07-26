@@ -77,7 +77,7 @@ if __name__ == "__main__":
 
     # for google/bigbird-roberta-base => google-bigbird-roberta-base
     OUTPUT_DIR = f"kaggle-{MODEL_PATH.replace('/','-')}-" + \
-                    f"{'ah' if args.model_type == 'attention_head' else 'mp'}" + \
+                    f"{'ah' if args.model_type == 'attention_head' else 'mp'}-" + \
                     f"{'bt' if args.back_translate else 'orig'}-"+ \
                     f"s{SEED}"
 
