@@ -13,18 +13,16 @@ class LitModel(nn.Module):
                        "layer_norm_eps": 1e-7})                       
         
         self.roberta = AutoModel.from_pretrained(roberta_path, config=config)
-
-        print("IN MODEL:", config)
         
         self.attention = nn.Sequential(            
-            nn.Linear(config["hidden_size"], 512),
+            nn.Linear(config.hidden_size, 512),
             nn.Tanh(),
             nn.Linear(512, 1),
             nn.Softmax(dim=1)
         )        
 
         self.regressor = nn.Sequential(
-            nn.Linear(config["hidden_size"], 1)
+            nn.Linear(config.hidden_size, 1)
         )
         
 
