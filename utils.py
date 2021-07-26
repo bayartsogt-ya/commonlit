@@ -89,6 +89,29 @@ def create_optimizer(model, learning_rate):
 
     return AdamW(parameters)
 
+def create_optimizer_roberta_large(model, learning_rate):
+    """
+    Code is copied from https://www.kaggle.com/jcesquiveld/roberta-large-5-fold-single-model-meanpooling/data#1386802
+    """
+    lr = learning_rate
+    multiplier = 0.975
+    classifier_lr = learning_rate * 1.5
+    
+    parameters = []
+    for layer in range(23,-1,-1):
+        layer_params = {
+            'params': [p for n,p in model.named_parameters() if f'encoder.layer.{layer}.' in n],
+            'lr': lr
+        }
+        parameters.append(layer_params)
+        lr *= multiplier
+    classifier_params = {
+        'params': [p for n,p in model.named_parameters() if 'layer_norm' in n or 'linear' in n 
+                   or 'pooling' in n],
+        'lr': classifier_lr
+    }
+    parameters.append(classifier_params)
+    return AdamW(parameters)
 
 
 def train(model, model_path, train_loader, val_loader,
