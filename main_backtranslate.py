@@ -11,7 +11,7 @@ from huggingface_hub.hf_api import HfFolder, HfApi
 from huggingface_hub.repository import Repository
 
 # local imports 
-from utils import set_random_seed, eval_mse, predict, create_optimizer, train, create_folds
+from utils import set_random_seed, eval_mse, predict, create_optimizer, train, create_folds, create_optimizer_roberta_large
 from dataset import LitDataset
 from model import LitModel
 
@@ -54,7 +54,8 @@ if __name__ == "__main__":
     parser.add_argument("--learning-rate", type=float, default=2e-5, help="If passed, seed will be used for reproducability")
     parser.add_argument("--seed", type=int, default=1000, help="If passed, seed will be used for reproducability")
     parser.add_argument("--back-translate", action="store_true", default=False, help="If passed, Back translated data will be added")
-    parser.add_argument("--use-warmup-scheduler", action="store_false", default=True, help="If passed, Back translated data will be added")
+    parser.add_argument("--disable-warmup-scheduler", action="store_true", default=False, help="If passed, Warm Up scheduler will be used")
+    parser.add_argument("--roberta-large-scheduler", action="store_true", default=False, help="If passed, ")
     args = parser.parse_args()
 
     print("----------- ARGS -----------")
@@ -144,14 +145,21 @@ if __name__ == "__main__":
 
     model = LitModel(MODEL_PATH).to(DEVICE)
 
-    optimizer = create_optimizer(model, LEARNING_RATE)
+    if args.roberta_large_scheduler:
+        print("Using Roberta Large Optimizer copied from https://www.kaggle.com/jcesquiveld/roberta-large-5-fold-single-model-meanpooling/notebook")
+        optimizer = create_optimizer_roberta_large(model, LEARNING_RATE)
+    else:
+        optimizer = create_optimizer(model, LEARNING_RATE)
 
-    scheduler = None
-    if args.use_warmup_scheduler:
-        scheduler = get_cosine_schedule_with_warmup(
-            optimizer,
-            num_training_steps=NUM_EPOCHS * len(train_loader),
-            num_warmup_steps=50)
+
+    scheduler = get_cosine_schedule_with_warmup(
+        optimizer,
+        num_training_steps=NUM_EPOCHS * len(train_loader),
+        num_warmup_steps=50)
+
+    if not args.disable_warmup_scheduler:
+        print("Disabling warmup scheduler")
+        scheduler = None
 
     list_val_rmse.append(train(model, model_output_path, train_loader,
                             val_loader, optimizer, DEVICE, scheduler=scheduler, num_epochs=NUM_EPOCHS))
