@@ -95,8 +95,8 @@ def create_optimizer_roberta_large(model, learning_rate):
     """
     lr = learning_rate
     multiplier = 0.975
-    classifier_lr = learning_rate * 1.5
-    
+    classifier_lr = 2e-5 # copied from the same notebook comment
+
     parameters = []
     for layer in range(23,-1,-1):
         layer_params = {

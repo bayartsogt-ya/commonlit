@@ -208,4 +208,4 @@ if __name__ == "__main__":
     repo.git_pull() # get updates first
     commit_link = repo.push_to_hub(commit_message=f"MODEL={FOLD} VALID={val_rmse:.3f}") # then push
     print("[success] UPLOADED TO HUGGINGFACE HUB", commit_link)
-    print("[success] TIME SPENT: %.3f" % (time.time()-start_time))
+    print("[success] TIME SPENT: %.3f min" % ((time.time()-start_time) / 60))
