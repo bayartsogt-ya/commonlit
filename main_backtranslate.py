@@ -62,6 +62,9 @@ if __name__ == "__main__":
     parser.add_argument("--back-translate", action="store_true", default=False, help="If passed, Back translated data will be added")
     parser.add_argument("--warmup-steps", type=int, default=40, help="If passed, Warm Up scheduler will be used")
     parser.add_argument("--roberta-large-optimizer", action="store_true", default=False, help="If passed, ")
+
+    # huggingface hub
+    parser.add_argument("--push-to-hub", action="store_true", default=False, help="If passed, model will be saved in huggingface hub")
     args = parser.parse_args()
 
     print("----------- ARGS -----------")
@@ -83,10 +86,13 @@ if __name__ == "__main__":
 
 
     # ----------------------------- HF API --------------------------------
-    hf_token = HfFolder.get_token(); api = HfApi()
-    repo_link = api.create_repo(token=hf_token, name=OUTPUT_DIR, exist_ok=True, private=True)
-    repo = Repository(local_dir=OUTPUT_DIR, clone_from=repo_link, use_auth_token=hf_token, git_user=GIT_USER, git_email=GIT_EMAIL)
-    print("[success] configured HF Hub to", OUTPUT_DIR)
+    if args.push_to_hub:
+        hf_token = HfFolder.get_token(); api = HfApi()
+        repo_link = api.create_repo(token=hf_token, name=OUTPUT_DIR, exist_ok=True, private=True)
+        repo = Repository(local_dir=OUTPUT_DIR, clone_from=repo_link, use_auth_token=hf_token, git_user=GIT_USER, git_email=GIT_EMAIL)
+        print("[success] configured HF Hub to", OUTPUT_DIR)
+    else:
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     with open(f"{OUTPUT_DIR}/training_arguments.json", "w") as writer:
         json.dump(vars(args), writer, indent=4)
@@ -205,7 +211,9 @@ if __name__ == "__main__":
         """)
 
     # ----------------------------- UPLOAD TO HUB -----------------------
-    repo.git_pull() # get updates first
-    commit_link = repo.push_to_hub(commit_message=f"MODEL={FOLD} VALID={val_rmse:.3f}") # then push
-    print("[success] UPLOADED TO HUGGINGFACE HUB", commit_link)
+    if args.push_to_hub:
+        repo.git_pull() # get updates first
+        commit_link = repo.push_to_hub(commit_message=f"MODEL={FOLD} VALID={val_rmse:.3f}") # then push
+        print("[success] UPLOADED TO HUGGINGFACE HUB", commit_link)
+        
     print("[success] TIME SPENT: %.3f min" % ((time.time()-start_time) / 60))
