@@ -59,6 +59,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=16, help="If passed, seed will be used for reproducability")
     parser.add_argument("--learning-rate", type=float, default=2e-5, help="If passed, seed will be used for reproducability")
     parser.add_argument("--seed", type=int, default=1000, help="If passed, seed will be used for reproducability")
+    parser.add_argument("--max-len", type=int, default=248, help="If passed, maximum  length for input")
     parser.add_argument("--back-translate", action="store_true", default=False, help="If passed, Back translated data will be added")
     parser.add_argument("--warmup-steps", type=int, default=40, help="If passed, Warm Up scheduler will be used")
     parser.add_argument("--roberta-large-optimizer", action="store_true", default=False, help="If passed, ")
@@ -77,12 +78,14 @@ if __name__ == "__main__":
     SEED = args.seed
     BATCH_SIZE = args.batch_size
     LEARNING_RATE = args.learning_rate
+    MAX_LEN = args.max_len
 
     # for google/bigbird-roberta-base => google-bigbird-roberta-base
     OUTPUT_DIR = f"kaggle-{MODEL_PATH.replace('/','-')}-" + \
                     f"{'ah' if args.model_type == 'attention_head' else 'mp'}-" + \
                     f"{'bt' if args.back_translate else 'orig'}-"+ \
-                    f"s{SEED}"
+                    f"s{SEED}" + \
+                    (f"m{MAX_LEN}" if MAX_LEN != 248 else "")
 
 
     # ----------------------------- HF API --------------------------------
