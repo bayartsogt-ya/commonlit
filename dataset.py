@@ -13,7 +13,10 @@ class LitDataset(Dataset):
         
         if not self.inference_only:
             self.target = torch.tensor(df.target.values, dtype=torch.float32)        
-    
+
+        if not tokenizer.pad_token:
+            tokenizer.pad_token = tokenizer.eos_token
+
         self.encoded = tokenizer.batch_encode_plus(
             self.text,
             padding = 'max_length',            
