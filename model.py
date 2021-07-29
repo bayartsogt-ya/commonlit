@@ -76,3 +76,22 @@ class MeanPoolingModel(nn.Module):
         logits = self.linear(norm_mean_embeddings)
         
         return logits
+
+class MLPHeadModel(nn.Module):
+    """
+    Simple MLP Head
+    """
+    def __init__(self, model_name):
+        super().__init__()
+        
+        config = AutoConfig.from_pretrained(model_name)
+        self.model = AutoModel.from_pretrained(model_name, config=config)
+        self.linear = nn.Linear(config.hidden_size, 1)
+        
+    def forward(self, input_ids, attention_mask):
+        
+        outputs = self.model(input_ids, attention_mask)
+        pooler_output = outputs[-1]
+        logits = self.linear(pooler_output)
+        
+        return logits

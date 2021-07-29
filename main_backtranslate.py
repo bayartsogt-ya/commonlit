@@ -13,7 +13,7 @@ from huggingface_hub.repository import Repository
 # local imports 
 from utils import set_random_seed, eval_mse, predict, create_optimizer, train, create_folds, create_optimizer_roberta_large
 from dataset import LitDataset
-from model import AttentionHeadModel, MeanPoolingModel
+from model import AttentionHeadModel, MLPHeadModel, MeanPoolingModel
 
 gc.enable()
 
@@ -52,7 +52,7 @@ if __name__ == "__main__":
     # model selection
     parser.add_argument("--model-path", type=str, default="roberta-base", help="Hugginface base model name")
     parser.add_argument("--lr-scheduler", type=str, default="cosine", help="If passed, Warm Up scheduler will be used")
-    parser.add_argument("--model-type", type=str, default="attention_head", help="One of [attention_head, mean_pooling]")
+    parser.add_argument("--model-type", type=str, default="attention_head", help="One of [attention_head, mean_pooling, mlp_head]")
 
     # hyperparameter
     parser.add_argument("--num-epochs", type=int, default=3, help="If passed, Number of Epochs to train")
@@ -168,8 +168,10 @@ if __name__ == "__main__":
         model = AttentionHeadModel(MODEL_PATH).to(DEVICE)
     elif args.model_type == "mean_pooling":
         model = MeanPoolingModel(MODEL_PATH).to(DEVICE)
+    elif args.model_type == "mlp_head":
+        model = MLPHeadModel(MODEL_PATH).to(DEVICE)
     else:
-        raise Exception("`model-type` should be one of [attention_head, mean_pooling]")
+        raise Exception("`model-type` should be one of [attention_head, mean_pooling, mlp_head]")
     
     # ---------------- OPTIMIZER SELECTION ----------------
     if args.roberta_large_optimizer:
