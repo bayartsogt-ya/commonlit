@@ -12,7 +12,8 @@ class LitDataset(Dataset):
         #self.text = [text.replace("\n", " ") for text in self.text]
         
         if not self.inference_only:
-            self.target = torch.tensor(df.target.values, dtype=torch.float32)        
+            self.target = torch.tensor(df.target.values, dtype=torch.float32)
+            self.standard_error = torch.tensor(df.standard_error.values, dtype=torch.float32)
 
         if not tokenizer.pad_token:
             tokenizer.pad_token = tokenizer.eos_token
@@ -38,4 +39,5 @@ class LitDataset(Dataset):
             return (input_ids, attention_mask)            
         else:
             target = self.target[index]
-            return (input_ids, attention_mask, target)
+            se = self.standard_error
+            return (input_ids, attention_mask, target, se)

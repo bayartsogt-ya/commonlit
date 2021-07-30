@@ -51,6 +51,43 @@ class AttentionHeadModel(nn.Module):
         # Now we reduce the context vector to the prediction score.
         return self.regressor(context_vector)
 
+
+class AttentionHeadModelWithStandardError(nn.Module):
+    def __init__(self, roberta_path):
+        super().__init__()
+
+        config = AutoConfig.from_pretrained(roberta_path)
+        config.update({"output_hidden_states":True, 
+                       "hidden_dropout_prob": 0.0,
+                       "layer_norm_eps": 1e-7})                       
+        
+        self.roberta = AutoModel.from_pretrained(roberta_path, config=config)
+        
+        self.attention = nn.Sequential(
+            nn.Linear(config.hidden_size, 512),
+            nn.Tanh(),
+            nn.Linear(512, 1),
+            nn.Softmax(dim=1)
+        )        
+
+        self.regressor = nn.Sequential(
+            nn.Linear(config.hidden_size, 1)
+        )
+
+        self.regressor_se = nn.Sequential( # for standard_error
+            nn.Linear(config.hidden_size, 1)
+        )
+        
+
+    def forward(self, input_ids, attention_mask):
+        roberta_output = self.roberta(input_ids=input_ids,
+                                      attention_mask=attention_mask)        
+        last_layer_hidden_states = roberta_output.hidden_states[-1]
+        weights = self.attention(last_layer_hidden_states)
+        context_vector = torch.sum(weights * last_layer_hidden_states, dim=1)
+        return self.regressor(context_vector), self.regressor_se(context_vector)
+
+
 class MeanPoolingModel(nn.Module):
     """
     Idea is copied from here https://www.kaggle.com/jcesquiveld/roberta-large-5-fold-single-model-meanpooling/notebook

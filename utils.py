@@ -20,43 +20,17 @@ def set_random_seed(random_seed):
 
     torch.backends.cudnn.deterministic = True
 
+def create_folds(data: pd.DataFrame, num_splits: int, seed: int):
+    data["kfold"] = -1
+    data = data.sample(frac=1, random_state=seed).reset_index(drop=True)
+    num_bins = int(np.floor(1 + np.log2(len(data))))
+    data.loc[:, "bins"] = pd.cut(data["target"], bins=num_bins, labels=False)
+    kf = StratifiedKFold(n_splits=num_splits)
+    for f, (t_, v_) in enumerate(kf.split(X=data, y=data.bins.values)):
+        data.loc[v_, 'kfold'] = f
+    data = data.drop("bins", axis=1)
+    return data
 
-def eval_mse(model, data_loader, device):
-    """Evaluates the mean squared error of the |model| on |data_loader|"""
-    model.eval()            
-    mse_sum = 0
-
-    with torch.no_grad():
-        for batch_num, (input_ids, attention_mask, target) in enumerate(data_loader):
-            input_ids = input_ids.to(device)
-            attention_mask = attention_mask.to(device)                        
-            target = target.to(device)           
-            
-            pred = model(input_ids, attention_mask)                       
-
-            mse_sum += nn.MSELoss(reduction="sum")(pred.flatten(), target).item()
-                
-
-    return mse_sum / len(data_loader.dataset)
-
-def predict(model, data_loader, device):
-    """Returns an np.array with predictions of the |model| on |data_loader|"""
-    model.eval()
-
-    result = np.zeros(len(data_loader.dataset))    
-    index = 0
-    
-    with torch.no_grad():
-        for batch_num, (input_ids, attention_mask) in enumerate(data_loader):
-            input_ids = input_ids.to(device)
-            attention_mask = attention_mask.to(device)
-                        
-            pred = model(input_ids, attention_mask)                        
-
-            result[index : index + pred.shape[0]] = pred.flatten().to("cpu")
-            index += pred.shape[0]
-
-    return result
 
 def create_optimizer(model, learning_rate):
     named_parameters = list(model.named_parameters())    
@@ -115,7 +89,7 @@ def create_optimizer_roberta_large(model, learning_rate):
 
 
 def train(model, model_path, train_loader, val_loader,
-          optimizer, device, scheduler=None, num_epochs=3):    
+          optimizer, device, scheduler=None, num_epochs=3, standard_error_alpha=None):    
     best_val_rmse = None
     best_epoch = 0
     step = 0
@@ -127,14 +101,22 @@ def train(model, model_path, train_loader, val_loader,
     for epoch in range(num_epochs):                           
         val_rmse = None         
 
-        for batch_num, (input_ids, attention_mask, target) in enumerate(train_loader):
+        for batch_num, (input_ids, attention_mask, target, standard_error) in enumerate(train_loader):
             input_ids = input_ids.to(device)
             attention_mask = attention_mask.to(device)            
             target = target.to(device)
+            standard_error = standard_error.to(device)
             optimizer.zero_grad()
             model.train()
-            pred = model(input_ids, attention_mask)
-            mse = nn.MSELoss(reduction="mean")(pred.flatten(), target)
+
+            if standard_error_alpha:
+                pred, pred_se = model(input_ids, attention_mask)
+                mse = nn.MSELoss(reduction="mean")(pred.flatten(), target)
+                mse_se = nn.MSELoss(reduction="mean")(pred_se.flatten(), standard_error)
+                mse = mse + standard_error_alpha * mse_se
+            else:
+                pred = model(input_ids, attention_mask)
+                mse = nn.MSELoss(reduction="mean")(pred.flatten(), target)
                         
             mse.backward()
 
@@ -149,7 +131,7 @@ def train(model, model_path, train_loader, val_loader,
                 print(f"\n{num_steps} steps took {elapsed_seconds:0.3} seconds")
                 last_eval_step = step
                 
-                val_rmse = math.sqrt(eval_mse(model, val_loader, device))                            
+                val_rmse = math.sqrt(eval_mse(model, val_loader, device, standard_error_alpha))                            
 
                 print(f"Epoch: {epoch} batch_num: {batch_num}", 
                       f"val_rmse: {val_rmse:0.4}")
@@ -172,13 +154,46 @@ def train(model, model_path, train_loader, val_loader,
                         
     return best_val_rmse
 
-def create_folds(data: pd.DataFrame, num_splits: int, seed: int):
-    data["kfold"] = -1
-    data = data.sample(frac=1, random_state=seed).reset_index(drop=True)
-    num_bins = int(np.floor(1 + np.log2(len(data))))
-    data.loc[:, "bins"] = pd.cut(data["target"], bins=num_bins, labels=False)
-    kf = StratifiedKFold(n_splits=num_splits)
-    for f, (t_, v_) in enumerate(kf.split(X=data, y=data.bins.values)):
-        data.loc[v_, 'kfold'] = f
-    data = data.drop("bins", axis=1)
-    return data
+
+def eval_mse(model, data_loader, device, standard_error_alpha=None):
+    """Evaluates the mean squared error of the |model| on |data_loader|"""
+    model.eval()            
+    mse_sum = 0
+
+    with torch.no_grad():
+        for batch_num, (input_ids, attention_mask, target) in enumerate(data_loader):
+            input_ids = input_ids.to(device)
+            attention_mask = attention_mask.to(device)                        
+            target = target.to(device)           
+            
+            if standard_error_alpha:
+                pred, pred_se = model(input_ids, attention_mask)
+            else:
+                pred = model(input_ids, attention_mask)
+
+            mse_sum += nn.MSELoss(reduction="sum")(pred.flatten(), target).item()
+                
+
+    return mse_sum / len(data_loader.dataset)
+
+def predict(model, data_loader, device, standard_error_alpha=None):
+    """Returns an np.array with predictions of the |model| on |data_loader|"""
+    model.eval()
+
+    result = np.zeros(len(data_loader.dataset))    
+    index = 0
+    
+    with torch.no_grad():
+        for batch_num, (input_ids, attention_mask) in enumerate(data_loader):
+            input_ids = input_ids.to(device)
+            attention_mask = attention_mask.to(device)
+                        
+            if standard_error_alpha:
+                pred, pred_se = model(input_ids, attention_mask)
+            else:
+                pred = model(input_ids, attention_mask)
+
+            result[index : index + pred.shape[0]] = pred.flatten().to("cpu")
+            index += pred.shape[0]
+
+    return result

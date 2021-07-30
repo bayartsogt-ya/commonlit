@@ -11,9 +11,9 @@ from huggingface_hub.hf_api import HfFolder, HfApi
 from huggingface_hub.repository import Repository
 
 # local imports 
-from utils import set_random_seed, eval_mse, predict, create_optimizer, train, create_folds, create_optimizer_roberta_large
+from utils import set_random_seed, create_optimizer, train, create_folds, create_optimizer_roberta_large
 from dataset import LitDataset
-from model import AttentionHeadModel, MLPHeadModel, MeanPoolingModel
+from model import AttentionHeadModel, AttentionHeadModelWithStandardError, MLPHeadModel, MeanPoolingModel
 
 gc.enable()
 
@@ -63,6 +63,7 @@ if __name__ == "__main__":
     parser.add_argument("--back-translate", action="store_true", default=False, help="If passed, Back translated data will be added")
     parser.add_argument("--warmup-steps", type=int, default=40, help="If passed, Warm Up scheduler will be used")
     parser.add_argument("--roberta-large-optimizer", action="store_true", default=False, help="If passed, ")
+    parser.add_argument("--standard-error-alpha", type=float, default=None, help="If passed, standard error headed model will be trained")
 
     # huggingface hub
     parser.add_argument("--push-to-hub", action="store_true", default=False, help="If passed, model will be saved in huggingface hub")
@@ -79,13 +80,15 @@ if __name__ == "__main__":
     BATCH_SIZE = args.batch_size
     LEARNING_RATE = args.learning_rate
     MAX_LEN = args.max_len
+    SE_ALPHA = args.standard_error_alpha
 
     # for google/bigbird-roberta-base => google-bigbird-roberta-base
     OUTPUT_DIR = f"kaggle-{MODEL_PATH.replace('/','-')}-" + \
                     f"{'ah' if args.model_type == 'attention_head' else 'mp'}-" + \
                     f"{'bt' if args.back_translate else 'orig'}-"+ \
                     f"s{SEED}" + \
-                    (f"m{MAX_LEN}" if MAX_LEN != 248 else "")
+                    (f"m{MAX_LEN}" if MAX_LEN != 248 else "") + \
+                    (f"se{SE_ALPHA}" if SE_ALPHA else "")
 
 
     # ----------------------------- HF API --------------------------------
@@ -168,7 +171,11 @@ if __name__ == "__main__":
 
     # ---------------- MODEL SELECTION ----------------
     if args.model_type == "attention_head":
-        model = AttentionHeadModel(MODEL_PATH).to(DEVICE)
+        if SE_ALPHA:
+            print("using Standard Error Model with Alpha", SE_ALPHA)
+            model = AttentionHeadModelWithStandardError(MODEL_PATH).to(DEVICE)
+        else:
+            model = AttentionHeadModel(MODEL_PATH).to(DEVICE)
     elif args.model_type == "mean_pooling":
         model = MeanPoolingModel(MODEL_PATH).to(DEVICE)
     elif args.model_type == "mlp_head":
@@ -201,7 +208,9 @@ if __name__ == "__main__":
 
     # ---------------- TRAINING ----------------
     val_rmse = train(model, model_output_path, train_loader,
-                            val_loader, optimizer, DEVICE, scheduler=scheduler, num_epochs=NUM_EPOCHS)
+                            val_loader, optimizer, DEVICE, scheduler=scheduler, num_epochs=NUM_EPOCHS, 
+                            standard_error_alpha=SE_ALPHA,
+                            )
 
     del model
     gc.collect()
