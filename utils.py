@@ -161,7 +161,7 @@ def eval_mse(model, data_loader, device, standard_error_alpha=None):
     mse_sum = 0
 
     with torch.no_grad():
-        for batch_num, (input_ids, attention_mask, target) in enumerate(data_loader):
+        for batch_num, (input_ids, attention_mask, target, standard_error) in enumerate(data_loader):
             input_ids = input_ids.to(device)
             attention_mask = attention_mask.to(device)                        
             target = target.to(device)           

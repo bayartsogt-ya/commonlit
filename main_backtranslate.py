@@ -88,7 +88,7 @@ if __name__ == "__main__":
                     f"{'bt' if args.back_translate else 'orig'}-"+ \
                     f"s{SEED}" + \
                     (f"m{MAX_LEN}" if MAX_LEN != 248 else "") + \
-                    (f"se{SE_ALPHA}" if SE_ALPHA else "")
+                    (f"se0{int(SE_ALPHA*10)}" if SE_ALPHA else "")
 
 
     # ----------------------------- HF API --------------------------------

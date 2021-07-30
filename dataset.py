@@ -39,5 +39,5 @@ class LitDataset(Dataset):
             return (input_ids, attention_mask)            
         else:
             target = self.target[index]
-            se = self.standard_error
+            se = self.standard_error[index]
             return (input_ids, attention_mask, target, se)
