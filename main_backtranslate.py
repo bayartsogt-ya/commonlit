@@ -11,7 +11,7 @@ from huggingface_hub.hf_api import HfFolder, HfApi
 from huggingface_hub.repository import Repository
 
 # local imports 
-from utils import set_random_seed, create_optimizer, train, create_folds, create_optimizer_roberta_large
+from utils import predict, rmse, set_random_seed, create_optimizer, train, create_folds, create_optimizer_roberta_large
 from dataset import LitDataset
 from model import AttentionHeadModel, AttentionHeadModelWithStandardError, MLPHeadModel, MeanPoolingModel
 
@@ -64,6 +64,7 @@ if __name__ == "__main__":
     parser.add_argument("--warmup-steps", type=int, default=40, help="If passed, Warm Up scheduler will be used")
     parser.add_argument("--roberta-large-optimizer", action="store_true", default=False, help="If passed, ")
     parser.add_argument("--standard-error-alpha", type=float, default=None, help="If passed, standard error headed model will be trained")
+    parser.add_argument("--do-train", action="store_true", default=False, help="If passed, Back translated data will be added")
 
     # huggingface hub
     parser.add_argument("--push-to-hub", action="store_true", default=False, help="If passed, model will be saved in huggingface hub")
@@ -134,41 +135,6 @@ if __name__ == "__main__":
 
     gc.collect()
 
-    # ----------------------------- 5-FOLD TRAINING --------------------------------
-    print("Starting training...")
-    
-    # for fold, (train_indices, val_indices) in enumerate(kfold.split(train_df)):
-    # if FOLD is not None and FOLD != fold:
-    #     continue
-    print(f"\nFold {FOLD}/{NUM_FOLDS}")
-    model_output_path = f"{OUTPUT_DIR}/model_{FOLD}.pth"
-
-    set_random_seed(SEED)
-
-    _train_df = train_df.query("kfold!=@FOLD")
-    _valid_df = train_df.query("kfold==@FOLD")
-
-    if args.back_translate:
-        _train_df_merged = _train_df[["id", "excerpt", "target"]].copy()
-        for lan in languages:
-            tmp = pd.DataFrame()
-            tmp["id"] = _train_df["id"].copy()
-            tmp["excerpt"] = _train_df[f"excerpt_{lan}"].copy()
-            tmp["target"]  = _train_df[f"pred_{lan}"].copy()
-            _train_df_merged = _train_df_merged.append(tmp)
-        assert _train_df.shape[0] * 1. ==  _train_df_merged.shape[0] / (len(languages) + 1)
-        _train_df = _train_df_merged
-
-    train_dataset = LitDataset(_train_df, tokenizer, MAX_LEN)
-    val_dataset = LitDataset(_valid_df, tokenizer, MAX_LEN)
-
-    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE,
-                            drop_last=True, shuffle=True, num_workers=NUM_DATA_WORKERS)
-    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE,
-                            drop_last=False, shuffle=False, num_workers=NUM_DATA_WORKERS)
-
-    set_random_seed(SEED)    
-
     # ---------------- MODEL SELECTION ----------------
     if args.model_type == "attention_head":
         if SE_ALPHA:
@@ -182,52 +148,123 @@ if __name__ == "__main__":
         model = MLPHeadModel(MODEL_PATH).to(DEVICE)
     else:
         raise Exception("`model-type` should be one of [attention_head, mean_pooling, mlp_head]")
+
+
+    # ----------------------------- CURRENT FOLD TRAINING --------------------------------
+    print("Starting training...")
     
-    # ---------------- OPTIMIZER SELECTION ----------------
-    if args.roberta_large_optimizer:
-        print("Using Roberta Large Optimizer copied from https://www.kaggle.com/jcesquiveld/roberta-large-5-fold-single-model-meanpooling/notebook")
-        optimizer = create_optimizer_roberta_large(model, LEARNING_RATE)
-    else:
-        optimizer = create_optimizer(model, LEARNING_RATE)
+    if args.do_train:
+        print(f"\nFold {FOLD}/{NUM_FOLDS}")
+        model_output_path = f"{OUTPUT_DIR}/model_{FOLD}.pth"
 
-    
-    # ---------------- SCHEDULER SELECTION ----------------
-    print(f"Using {args.lr_scheduler} scheduler")
-    if args.lr_scheduler == "cosine":
-        scheduler = get_cosine_schedule_with_warmup(
-            optimizer,
-            num_training_steps=NUM_EPOCHS * len(train_loader),
-            num_warmup_steps=args.warmup_steps)
-    elif args.lr_scheduler == "linear":
-        scheduler = get_linear_schedule_with_warmup(
-            optimizer,
-            num_training_steps=NUM_EPOCHS * len(train_loader),
-            num_warmup_steps=args.warmup_steps)
-    else:
-        scheduler = None
+        set_random_seed(SEED)
 
-    # ---------------- TRAINING ----------------
-    val_rmse = train(model, model_output_path, train_loader,
-                            val_loader, optimizer, DEVICE, scheduler=scheduler, num_epochs=NUM_EPOCHS, 
-                            standard_error_alpha=SE_ALPHA,
-                            )
+        _train_df = train_df.query("kfold!=@FOLD")
+        _valid_df = train_df.query("kfold==@FOLD")
 
-    del model
-    gc.collect()
+        if args.back_translate:
+            _train_df_merged = _train_df[["id", "excerpt", "target"]].copy()
+            for lan in languages:
+                tmp = pd.DataFrame()
+                tmp["id"] = _train_df["id"].copy()
+                tmp["excerpt"] = _train_df[f"excerpt_{lan}"].copy()
+                tmp["target"]  = _train_df[f"pred_{lan}"].copy()
+                _train_df_merged = _train_df_merged.append(tmp)
+            assert _train_df.shape[0] * 1. ==  _train_df_merged.shape[0] / (len(languages) + 1)
+            _train_df = _train_df_merged
 
-    print("\nPerformance estimates:")
-    print(f"FOLD {FOLD} | VAL RMSE: {val_rmse}")
+        train_dataset = LitDataset(_train_df, tokenizer, MAX_LEN)
+        val_dataset = LitDataset(_valid_df, tokenizer, MAX_LEN)
 
-    with open(f"{OUTPUT_DIR}/log_{FOLD}.txt", "w") as writer:
-        writer.write(f"""
-        Performance estimates:
-        FOLD {FOLD} | VAL RMSE: {val_rmse}
-        """)
+        train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE,
+                                drop_last=True, shuffle=True, num_workers=NUM_DATA_WORKERS)
+        val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE,
+                                drop_last=False, shuffle=False, num_workers=NUM_DATA_WORKERS)
 
-    # ----------------------------- UPLOAD TO HUB -----------------------
-    if args.push_to_hub:
-        repo.git_pull() # get updates first
-        commit_link = repo.push_to_hub(commit_message=f"MODEL={FOLD} VALID={val_rmse:.3f}") # then push
-        print("[success] UPLOADED TO HUGGINGFACE HUB", commit_link)
+        set_random_seed(SEED)
         
+        # ---------------- OPTIMIZER SELECTION ----------------
+        if args.roberta_large_optimizer:
+            print("Using Roberta Large Optimizer copied from https://www.kaggle.com/jcesquiveld/roberta-large-5-fold-single-model-meanpooling/notebook")
+            optimizer = create_optimizer_roberta_large(model, LEARNING_RATE)
+        else:
+            optimizer = create_optimizer(model, LEARNING_RATE)
+
+        
+        # ---------------- SCHEDULER SELECTION ----------------
+        print(f"Using {args.lr_scheduler} scheduler")
+        if args.lr_scheduler == "cosine":
+            scheduler = get_cosine_schedule_with_warmup(
+                optimizer,
+                num_training_steps=NUM_EPOCHS * len(train_loader),
+                num_warmup_steps=args.warmup_steps)
+        elif args.lr_scheduler == "linear":
+            scheduler = get_linear_schedule_with_warmup(
+                optimizer,
+                num_training_steps=NUM_EPOCHS * len(train_loader),
+                num_warmup_steps=args.warmup_steps)
+        else:
+            scheduler = None
+
+        # ---------------- TRAINING ----------------
+        val_rmse = train(model, model_output_path, train_loader,
+                                val_loader, optimizer, DEVICE, scheduler=scheduler, num_epochs=NUM_EPOCHS, 
+                                standard_error_alpha=SE_ALPHA,
+                                )
+
+        # del model
+        # gc.collect()
+
+        print("\nPerformance estimates:")
+        print(f"FOLD {FOLD} | VAL RMSE: {val_rmse}")
+
+        with open(f"{OUTPUT_DIR}/log_{FOLD}.txt", "w") as writer:
+            writer.write(f"""
+            Performance estimates:
+            FOLD {FOLD} | VAL RMSE: {val_rmse}
+            """)
+
+        # ----------------------------- UPLOAD TO HUB -----------------------
+        if args.push_to_hub:
+            repo.git_pull() # get updates first
+            commit_link = repo.push_to_hub(commit_message=f"MODEL={FOLD} VALID={val_rmse:.3f}") # then push
+            print("[success] UPLOADED TO HUGGINGFACE HUB", commit_link)
+            
+        print("[success] TIME SPENT: %.3f min" % ((time.time()-start_time) / 60))
+
+
+    # ---------------- OUT OF FOLD PREDICTION ----------------
+    print("----------------- VALIDATING -----------------")
+    from glob import glob
+    import sys
+    list_model_path = sorted(glob(f"{OUTPUT_DIR}/model_*.pth"))
+    if len(list_model_path) != NUM_FOLDS:
+        print(f"WARNING: {len(list_model_path)} of {NUM_FOLDS} are present in {OUTPUT_DIR}")
+        sys.exit(0)
+
+    print(
+        f"""
+        Here are list of models:
+        {'\n'.join(list_model_path)}
+        """
+    )
+    
+    model_oof = np.zeros(train_df.shape[0],)
+    for fold, model_path in enumerate(list_model_path):
+        valid_df = train_df.query("kfold==@fold")
+
+        val_dataset = LitDataset(valid_df, tokenizer, MAX_LEN)
+        val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE,
+                                drop_last=False, shuffle=False, num_workers=NUM_DATA_WORKERS)
+
+        model.load_state_dict(torch.load(model_path))
+        model.to(DEVICE)
+
+        model_oof[valid_df.index.values] = predict(model, val_loader, DEVICE, SE_ALPHA)
+        print(f"fold: {fold} => RMSE: {rmse(valid_df.target.values, model_oof[valid_df.index.values])}")
+
+
+    train_df["pred"] = model_oof
+    train_df.to_csv(f"{OUTPUT_DIR}/prediction.csv", index=False)
+
     print("[success] TIME SPENT: %.3f min" % ((time.time()-start_time) / 60))

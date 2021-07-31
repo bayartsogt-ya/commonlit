@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 from transformers import AdamW
 from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import mean_squared_error
 
 EVAL_SCHEDULE = [(0.50, 16), (0.49, 8), (0.48, 4), (-1., 4)]
 
@@ -197,3 +198,6 @@ def predict(model, data_loader, device, standard_error_alpha=None):
             index += pred.shape[0]
 
     return result
+
+def rmse(ground_truth, prediction):
+    return np.sqrt(mean_squared_error(ground_truth, prediction))
