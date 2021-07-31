@@ -263,6 +263,9 @@ if __name__ == "__main__":
         model_oof[valid_df.index.values] = predict(model, val_loader, DEVICE, SE_ALPHA)
         print(f"fold: {fold} => RMSE: {rmse(valid_df.target.values, model_oof[valid_df.index.values])}")
 
+    print("--------------")
+    print(f"AVG: => RMSE: {rmse(train_df.target.values, model_oof)}")
+    print("--------------")
 
     train_df["pred"] = model_oof
     train_df.to_csv(f"{OUTPUT_DIR}/prediction.csv", index=False)
