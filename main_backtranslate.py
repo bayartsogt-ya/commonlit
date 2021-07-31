@@ -242,18 +242,14 @@ if __name__ == "__main__":
         print(f"WARNING: {len(list_model_path)} of {NUM_FOLDS} are present in {OUTPUT_DIR}")
         sys.exit(0)
 
-    print(
-        f"""
-        Here are list of models:
-        {'\n'.join(list_model_path)}
-        """
-    )
+    print("Here are list of models:")
+    print('\n'.join(list_model_path))
     
     model_oof = np.zeros(train_df.shape[0],)
     for fold, model_path in enumerate(list_model_path):
         valid_df = train_df.query("kfold==@fold")
 
-        val_dataset = LitDataset(valid_df, tokenizer, MAX_LEN)
+        val_dataset = LitDataset(valid_df, tokenizer, MAX_LEN, inference_only=True)
         val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE,
                                 drop_last=False, shuffle=False, num_workers=NUM_DATA_WORKERS)
 
@@ -270,4 +266,9 @@ if __name__ == "__main__":
     train_df["pred"] = model_oof
     train_df.to_csv(f"{OUTPUT_DIR}/prediction.csv", index=False)
 
+    if args.push_to_hub:
+        repo.git_pull() # get updates first
+        commit_link = repo.push_to_hub(commit_message=f"AVG: => RMSE: {rmse(train_df.target.values, model_oof):.3f}") # then push
+        print("[success] UPLOADED TO HUGGINGFACE HUB", commit_link)
+        
     print("[success] TIME SPENT: %.3f min" % ((time.time()-start_time) / 60))
