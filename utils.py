@@ -113,7 +113,7 @@ def train(model, model_path, train_loader, val_loader,
                 pred, pred_se = model(input_ids, attention_mask)
                 mse = nn.MSELoss(reduction="mean")(pred.flatten(), target)
                 mse_se = nn.MSELoss(reduction="mean")(pred_se.flatten(), standard_error)
-                mse = mse + standard_error_alpha * mse_se
+                mse = (1. - standard_error_alpha) * mse + standard_error_alpha * mse_se
             else:
                 pred = model(input_ids, attention_mask)
                 mse = nn.MSELoss(reduction="mean")(pred.flatten(), target)
