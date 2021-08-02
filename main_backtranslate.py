@@ -58,13 +58,16 @@ if __name__ == "__main__":
     parser.add_argument("--num-epochs", type=int, default=3, help="If passed, Number of Epochs to train")
     parser.add_argument("--batch-size", type=int, default=16, help="If passed, seed will be used for reproducability")
     parser.add_argument("--learning-rate", type=float, default=2e-5, help="If passed, seed will be used for reproducability")
-    parser.add_argument("--seed", type=int, default=1000, help="If passed, seed will be used for reproducability")
-    parser.add_argument("--max-len", type=int, default=248, help="If passed, maximum  length for input")
     parser.add_argument("--back-translate", action="store_true", default=False, help="If passed, Back translated data will be added")
     parser.add_argument("--warmup-steps", type=int, default=40, help="If passed, Warm Up scheduler will be used")
     parser.add_argument("--roberta-large-optimizer", action="store_true", default=False, help="If passed, ")
     parser.add_argument("--standard-error-alpha", type=float, default=None, help="If passed, standard error headed model will be trained")
     parser.add_argument("--do-train", action="store_true", default=False, help="If passed, Back translated data will be added")
+
+    # dataloader
+    parser.add_argument("--seed", type=int, default=1000, help="If passed, seed will be used for reproducability")
+    parser.add_argument("--max-len", type=int, default=248, help="If passed, maximum  length for input")
+    parser.add_argument("--mask-prob", type=float, default=0.0, help="If passed, standard error headed model will be trained")
 
     # huggingface hub
     parser.add_argument("--push-to-hub", action="store_true", default=False, help="If passed, model will be saved in huggingface hub")
@@ -82,6 +85,7 @@ if __name__ == "__main__":
     LEARNING_RATE = args.learning_rate
     MAX_LEN = args.max_len
     SE_ALPHA = args.standard_error_alpha
+    MASK_PROB = args.mask_prob
 
     # for google/bigbird-roberta-base => google-bigbird-roberta-base
     OUTPUT_DIR = f"kaggle-{MODEL_PATH.replace('/','-')}-" + \
@@ -89,8 +93,8 @@ if __name__ == "__main__":
                     f"{'bt' if args.back_translate else 'orig'}-"+ \
                     f"s{SEED}" + \
                     (f"m{MAX_LEN}" if MAX_LEN != 248 else "") + \
-                    (f"se{str(SE_ALPHA).replace('.', '')}" if SE_ALPHA else "")
-
+                    (f"se{str(SE_ALPHA).replace('.', '')}" if SE_ALPHA else "") + \
+                    (f"msk{str(MASK_PROB).replace('.', '')}" if MASK_PROB else "")
 
     # ----------------------------- HF API --------------------------------
     if args.push_to_hub:
@@ -173,7 +177,7 @@ if __name__ == "__main__":
             assert _train_df.shape[0] * 1. ==  _train_df_merged.shape[0] / (len(languages) + 1)
             _train_df = _train_df_merged
 
-        train_dataset = LitDataset(_train_df, tokenizer, MAX_LEN)
+        train_dataset = LitDataset(_train_df, tokenizer, MAX_LEN, mask_prob=MASK_PROB)
         val_dataset = LitDataset(_valid_df, tokenizer, MAX_LEN)
 
         train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE,
