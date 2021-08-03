@@ -17,6 +17,12 @@
 | **Ensemble** | **0.457**  | **0.455** |
 
 ## Train
+If you want to use `push-to-hub` then you need to login to huggingface:
+```
+huggingface-cli login
+```
+
+Then start training on only fold 0. After fold, automatic evaluation takes a place.
 ```
 python main.py \
     --fold 0 \
