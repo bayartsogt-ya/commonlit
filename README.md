@@ -1,4 +1,4 @@
-# CommonLit Readability Prize (Silver medal by 63/3682)
+# CommonLit Readability Prize (🥈 63/3682)
 [![Screen Shot 2021-08-03 at 11 37 30 AM](https://user-images.githubusercontent.com/43239645/128053195-dc626c44-612f-4e9e-aac4-498b77c86033.png)](https://www.kaggle.com/c/commonlitreadabilityprize)
 
 ## What you can find useful
